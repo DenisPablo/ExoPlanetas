@@ -1,0 +1,245 @@
+openapi: 3.0.1
+info:
+  title: Exoplanet Classifier API
+  description: API REST para clasificación automática de exoplanetas usando ML/AI.
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8000
+    description: Servidor local de desarrollo
+  - url: https://api.exoclassifier.com
+    description: Servidor de producción
+
+tags:
+  - name: Auth
+    description: Manejo de autenticación
+  - name: Model
+    description: Información de modelo y versiones
+  - name: Predict
+    description: Predicciones de nuevos datos
+  - name: Train
+    description: Reentrenamiento de modelos
+  - name: Dashboard
+    description: Métricas y estadísticas para la interfaz
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Autenticación de usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+              required: [username, password]
+      responses:
+        "200":
+          description: Token JWT válido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expires_in:
+                    type: integer
+
+  /model/info:
+    get:
+      tags: [Model]
+      summary: Obtener información del modelo actual
+      responses:
+        "200":
+          description: Información básica del modelo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  version:
+                    type: string
+                  trained_on:
+                    type: array
+                    items: { type: string }
+                  classes:
+                    type: array
+                    items: { type: string }
+                  metrics:
+                    type: object
+                    properties:
+                      accuracy: { type: number, format: float }
+                      macro_f1: { type: number, format: float }
+                      recall_confirmed: { type: number, format: float }
+                      recall_fp: { type: number, format: float }
+
+  /predict:
+    post:
+      tags: [Predict]
+      summary: Realizar predicción para datos tabulares
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      period: { type: number }
+                      duration: { type: number }
+                      depth: { type: number }
+                      planet_radius: { type: number }
+                      star_teff: { type: number }
+                      star_logg: { type: number }
+                      star_feh: { type: number }
+      responses:
+        "200":
+          description: Resultado de predicción
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  predictions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        class: { type: string }
+                        probabilities:
+                          type: object
+                          additionalProperties:
+                            type: number
+                        explanations:
+                          type: object
+                          properties:
+                            top_features:
+                              type: object
+                              additionalProperties:
+                                type: number
+
+  /predict/upload:
+    post:
+      tags: [Predict]
+      summary: Subir dataset completo en CSV para predicciones batch
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Estado de procesamiento
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  job_id: { type: string }
+
+  /predict/status/{job_id}:
+    get:
+      tags: [Predict]
+      summary: Consultar estado de un job batch
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Estado actual del job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  results_url: { type: string }
+
+  /predict/results/{job_id}:
+    get:
+      tags: [Predict]
+      summary: Obtener resultados de un job batch
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: JSON con predicciones o link a CSV
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  predictions:
+                    type: array
+                    items: { type: object }
+
+  /train:
+    post:
+      tags: [Train]
+      summary: Reentrenar modelo con nuevos datos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dataset_id: { type: string }
+                params:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Entrenamiento iniciado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  model_version: { type: string }
+
+  /dashboard/metrics:
+    get:
+      tags: [Dashboard]
+      summary: Obtener métricas y estadísticas globales
+      responses:
+        "200":
+          description: Métricas del modelo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  confusion_matrix:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties: { type: integer }
+                  class_distribution:
+                    type: object
+                    additionalProperties: { type: integer }
