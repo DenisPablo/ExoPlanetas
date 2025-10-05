@@ -171,6 +171,10 @@ def model_info():
         - total_models: Número total de modelos
         - current_model: Información del modelo actualmente cargado
         - models_summary: Resumen de cada modelo con su última versión
+        
+    Note:
+        El campo "dataset_name" en current_model devuelve solo el nombre del archivo
+        (ej. "kepler.csv") en lugar de la ruta completa para mayor claridad.
     """
     try:
         # Obtener todos los modelos disponibles
@@ -179,10 +183,14 @@ def model_info():
         # Información del modelo actualmente cargado
         current_model_info = None
         if model.pipe is not None:
+            # Extraer solo el nombre del archivo del dataset (sin ruta completa)
+            dataset_path = settings.get_dataset_path()
+            dataset_name = os.path.basename(dataset_path) if dataset_path else "unknown"
+            
             current_model_info = {
                 "name": model.__class__.__name__,
                 "version": model.version or "unknown",
-                "trained_on": [str(settings.get_dataset_path())],
+                "dataset_name": dataset_name,  # Cambiado de "trained_on" a "dataset_name" para mayor claridad
                 "classes": list(model.pipe.classes_) if model.pipe else []
             }
         
