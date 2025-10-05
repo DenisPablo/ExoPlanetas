@@ -184,9 +184,14 @@ class HGBExoplanetModel:
 
         # Crear/enlazar symlink latest
         latest_link = settings.MODELS_DIR / model_name / "latest"
-        if latest_link.exists():
-            latest_link.unlink()
-        latest_link.symlink_to(version)
+        try:
+            if latest_link.exists() or latest_link.is_symlink():
+                latest_link.unlink()
+            latest_link.symlink_to(version)
+            print(f"[INFO] Symlink 'latest' actualizado -> {version}")
+        except Exception as e:
+            print(f"[WARNING] Error actualizando symlink 'latest': {e}")
+            # Continuar sin fallar el entrenamiento
 
         print(f"[INFO] Modelo guardado en: {model_path}")
         print(f"[INFO] Versión: {version}")
@@ -208,8 +213,13 @@ class HGBExoplanetModel:
         if not versions:
             return "v1.0.0"
         
-        # Extraer números de versión y incrementar
-        latest_version = sorted(versions)[-1]
+        # Ordenamiento semántico de versiones
+        def version_key(version):
+            # Extraer números de versión (ej: "v1.0.10" -> [1, 0, 10])
+            parts = version[1:].split('.')
+            return tuple(int(part) for part in parts)
+        
+        latest_version = sorted(versions, key=version_key)[-1]
         version_parts = latest_version[1:].split(".")
         major, minor, patch = map(int, version_parts)
         
