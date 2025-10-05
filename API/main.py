@@ -135,7 +135,7 @@ def load_model_by_version(model_name: str = "hgb_exoplanet_model", version: str 
             available_versions = settings.get_all_versions(model_name)
             raise HTTPException(
                 status_code=404, 
-                detail=f"Versión '{version}' no encontrada para el modelo '{model_name}'. Versiones disponibles: {available_versions}"
+                detail=f"Version '{version}' not found for model '{model_name}'. Available versions: {available_versions}"
             )
         
         # Crear nueva instancia del modelo
@@ -152,16 +152,16 @@ def load_model_by_version(model_name: str = "hgb_exoplanet_model", version: str 
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=404, 
-            detail=f"Modelo no encontrado: {str(e)}"
+            detail=f"Model not found: {str(e)}"
         )
     except Exception as e:
         raise HTTPException(
             status_code=500, 
-            detail=f"Error cargando modelo: {str(e)}"
+            detail=f"Error loading model: {str(e)}"
         )
 
 
-@app.get("/model/info", tags=["Model"], summary="Información de todos los modelos disponibles")
+@app.get("/model/info", tags=["Model"], summary="Information about all available models")
 def model_info():
     """
     Obtiene información de todos los modelos disponibles en el sistema.
@@ -235,14 +235,14 @@ def model_info():
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo información de modelos: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting model information: {str(e)}")
 
 
-@app.post("/predict", tags=["Predict"], summary="Predicción individual de exoplanetas")
+@app.post("/predict", tags=["Predict"], summary="Individual exoplanet prediction")
 def predict(
     data: Dict[str, List[Dict[str, float]]],
-    model_name: str = Query("hgb_exoplanet_model", description="Nombre del modelo a usar"),
-    version: str = Query("latest", description="Versión específica del modelo o 'latest'")
+    model_name: str = Query("hgb_exoplanet_model", description="Name of the model to use"),
+    version: str = Query("latest", description="Specific version of the model or 'latest'")
 ):
     """
     Realiza predicciones individuales para uno o más exoplanetas usando una versión específica del modelo.
@@ -273,7 +273,7 @@ def predict(
     """
     user_data = data.get("data", [])
     if not user_data:
-        raise HTTPException(status_code=400, detail="No se enviaron datos para predecir")
+        raise HTTPException(status_code=400, detail="No data provided for prediction")
     
     try:
         # Cargar modelo específico por versión
@@ -308,14 +308,14 @@ def predict(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error en predicción: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
 
 
-@app.post("/predict/upload", tags=["Predict"], summary="Predicción batch via archivo CSV")
+@app.post("/predict/upload", tags=["Predict"], summary="Batch prediction via CSV file")
 async def predict_upload(
     file: UploadFile = File(...),
-    model_name: str = Query("hgb_exoplanet_model", description="Nombre del modelo a usar"),
-    version: str = Query("latest", description="Versión específica del modelo o 'latest'")
+    model_name: str = Query("hgb_exoplanet_model", description="Name of the model to use"),
+    version: str = Query("latest", description="Specific version of the model or 'latest'")
 ):
     """
     Realiza predicciones batch subiendo un archivo CSV con datos de exoplanetas usando una versión específica del modelo.
@@ -335,7 +335,7 @@ async def predict_upload(
         
     CSV Output Features:
         - Columnas ordenadas lógicamente: identificación, modelo, otras, predicción
-        - prediction_label: Clase predicha (CONFIRMED, CANDIDATE, FALSE POSITIVE)
+        - prediction_label: Predicted class (CONFIRMED, CANDIDATE, FALSE_POSITIVE)
         - confidence: Porcentaje de confianza de la predicción
         - generated_at: Marca de tiempo de generación
         - Formato UTF-8 con separador de coma
@@ -347,7 +347,7 @@ async def predict_upload(
         que el modelo espera (koi_period, koi_duration, koi_depth, etc.)
     """
     if not file.filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Archivo debe ser CSV")
+        raise HTTPException(status_code=400, detail="File must be CSV")
 
     try:
         # Cargar modelo específico por versión
@@ -359,15 +359,15 @@ async def predict_upload(
         df = pd.read_csv(io.BytesIO(content), comment="#", quotechar='"', engine="python")
         
         if df.empty:
-            raise HTTPException(status_code=400, detail="El archivo CSV está vacío. Por favor, verifique que el archivo contenga datos.")
+            raise HTTPException(status_code=400, detail="CSV file is empty. Please verify that the file contains data.")
 
         # Verificar columnas necesarias para predicción
         missing_columns = [col for col in model_instance.X_num.columns if col not in df.columns]
         if missing_columns:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Faltan columnas necesarias para la predicción: {missing_columns[:5]}{'...' if len(missing_columns) > 5 else ''}. "
-                       f"El archivo debe contener al menos las columnas: {list(model_instance.X_num.columns[:10])}{'...' if len(model_instance.X_num.columns) > 10 else ''}"
+                detail=f"Missing required columns for prediction: {missing_columns[:5]}{'...' if len(missing_columns) > 5 else ''}. "
+                       f"The file must contain at least these columns: {list(model_instance.X_num.columns[:10])}{'...' if len(model_instance.X_num.columns) > 10 else ''}"
             )
 
         # Preparar datos para predicción
@@ -428,10 +428,10 @@ async def predict_upload(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error procesando archivo: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
 
 
-@app.get("/download/{filename}", tags=["Predict"], summary="Descargar archivo de predicciones")
+@app.get("/download/{filename}", tags=["Predict"], summary="Download prediction file")
 def download(filename: str):
     """
     Descarga un archivo de predicciones generado por el endpoint /predict/upload.
@@ -447,11 +447,11 @@ def download(filename: str):
     """
     file_path = settings.get_output_path(filename)
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path=file_path, filename=filename, media_type='text/csv')
 
 
-@app.post("/train", tags=["Train"], summary="Reentrenar modelo con nuevos hiperparámetros")
+@app.post("/train", tags=["Train"], summary="Retrain model with new hyperparameters")
 def train(data: Dict[str, Any]):
     """
     Reentrena el modelo con nuevos hiperparámetros y crea una nueva versión.
@@ -479,7 +479,7 @@ def train(data: Dict[str, Any]):
     if not data:
         raise HTTPException(
             status_code=400,
-            detail="Debes enviar al menos un hiperparámetro para entrenar y sobrescribir el modelo."
+            detail="You must send at least one hyperparameter to train and overwrite the model."
         )
 
     try:
@@ -505,10 +505,10 @@ def train(data: Dict[str, Any]):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en entrenamiento: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Training error: {str(e)}")
 
 
-@app.get("/model-info/{model_name}", tags=["Model Info"], summary="Información detallada de un modelo específico")
+@app.get("/model-info/{model_name}", tags=["Model Info"], summary="Detailed information about a specific model")
 def get_model_info(model_name: str):
     """
     Obtiene información detallada de un modelo específico incluyendo métricas y matriz de confusión.
@@ -538,11 +538,11 @@ def get_model_info(model_name: str):
 
         # Validaciones
         if not model_path.exists():
-            raise HTTPException(status_code=404, detail=f"Modelo '{model_name}' no encontrado")
+            raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
         if not metrics_path.exists():
-            raise HTTPException(status_code=404, detail=f"Métricas no encontradas para '{model_name}'")
+            raise HTTPException(status_code=404, detail=f"Metrics not found for '{model_name}'")
         if not matrix_path.exists():
-            raise HTTPException(status_code=404, detail=f"Matriz de confusión no encontrada para '{model_name}'")
+            raise HTTPException(status_code=404, detail=f"Confusion matrix not found for '{model_name}'")
 
         # Cargar métricas
         with open(metrics_path, "r") as f:
@@ -566,10 +566,10 @@ def get_model_info(model_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo información del modelo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting model information: {str(e)}")
 
 
-@app.get("/model-versions/{model_name}", tags=["Model Versions"], summary="Listar todas las versiones de un modelo")
+@app.get("/model-versions/{model_name}", tags=["Model Versions"], summary="List all versions of a model")
 def get_model_versions(model_name: str):
     """
     Obtiene todas las versiones disponibles de un modelo específico.
@@ -590,13 +590,13 @@ def get_model_versions(model_name: str):
         # Verificar que el modelo existe
         model_dir = settings.MODELS_DIR / model_name
         if not model_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Modelo '{model_name}' no encontrado")
+            raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
         
         # Obtener todas las versiones
         versions = settings.get_all_versions(model_name)
         
         if not versions:
-            raise HTTPException(status_code=404, detail=f"No se encontraron versiones para el modelo '{model_name}'")
+            raise HTTPException(status_code=404, detail=f"No versions found for model '{model_name}'")
         
         # Obtener la versión más reciente
         latest_version = settings.get_latest_version(model_name)
@@ -611,10 +611,10 @@ def get_model_versions(model_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo versiones del modelo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting model versions: {str(e)}")
 
 
-@app.get("/model-info/{model_name}/{version}", tags=["Model Versions"], summary="Información detallada de una versión específica")
+@app.get("/model-info/{model_name}/{version}", tags=["Model Versions"], summary="Detailed information about a specific version")
 def get_model_version_info(model_name: str, version: str):
     """
     Obtiene información detallada de una versión específica de un modelo.
@@ -637,21 +637,21 @@ def get_model_version_info(model_name: str, version: str):
         # Verificar que el modelo existe
         model_dir = settings.MODELS_DIR / model_name
         if not model_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Modelo '{model_name}' no encontrado")
+            raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
         
         # Verificar que la versión existe
         if not settings.version_exists(model_name, version):
-            raise HTTPException(status_code=404, detail=f"Versión '{version}' no encontrada para el modelo '{model_name}'")
+            raise HTTPException(status_code=404, detail=f"Version '{version}' not found for model '{model_name}'")
         
         # Obtener rutas de archivos
         paths = settings.get_version_paths(model_name, version)
         
         # Validar que los archivos necesarios existen
         if not paths["metrics_path"].exists():
-            raise HTTPException(status_code=404, detail=f"Métricas no encontradas para '{model_name}' versión '{version}'")
+            raise HTTPException(status_code=404, detail=f"Metrics not found for '{model_name}' version '{version}'")
         
         if not paths["matrix_path"].exists():
-            raise HTTPException(status_code=404, detail=f"Matriz de confusión no encontrada para '{model_name}' versión '{version}'")
+            raise HTTPException(status_code=404, detail=f"Confusion matrix not found for '{model_name}' version '{version}'")
         
         # Cargar métricas
         with open(paths["metrics_path"], "r") as f:
@@ -679,7 +679,7 @@ def get_model_version_info(model_name: str, version: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo información de la versión: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting version information: {str(e)}")
 
 
 if __name__ == "__main__":

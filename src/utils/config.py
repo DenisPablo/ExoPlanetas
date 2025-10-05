@@ -72,7 +72,13 @@ class Settings:
         
         versions = [d.name for d in model_dir.iterdir() if d.is_dir() and d.name.startswith("v")]
         if versions:
-            return sorted(versions)[-1]
+            # Ordenamiento semántico de versiones
+            def version_key(version):
+                # Extraer números de versión (ej: "v1.0.10" -> [1, 0, 10])
+                parts = version[1:].split('.')
+                return tuple(int(part) for part in parts)
+            
+            return sorted(versions, key=version_key)[-1]
         return "v1.0.0"
     
     def get_all_versions(self, model_name: str) -> list:
@@ -82,7 +88,13 @@ class Settings:
             return []
         
         versions = [d.name for d in model_dir.iterdir() if d.is_dir() and d.name.startswith("v")]
-        return sorted(versions)
+        # Ordenamiento semántico de versiones
+        def version_key(version):
+            # Extraer números de versión (ej: "v1.0.10" -> [1, 0, 10])
+            parts = version[1:].split('.')
+            return tuple(int(part) for part in parts)
+        
+        return sorted(versions, key=version_key)
     
     def version_exists(self, model_name: str, version: str) -> bool:
         """Verificar si una versión específica existe."""

@@ -86,6 +86,13 @@ class HGBExoplanetModel:
                 X_num = X_num.drop(columns=[c])
 
         y = df[self.target].copy()
+        
+        # Transformar etiquetas de español a inglés
+        label_mapping = {
+            "FALSE POSITIVE": "FALSE_POSITIVE"
+        }
+        y = y.replace(label_mapping)
+        
         groups = df[self.group_col].copy()
 
         print(f"[INFO] Features finales: {X_num.shape[1]} columnas")
@@ -122,7 +129,7 @@ class HGBExoplanetModel:
     def evaluate(self) -> pd.DataFrame:
         """Evalúa el modelo y genera métricas."""
         self.y_pred = self.pipe.predict(self.X_test)
-        labels = ["CANDIDATE", "CONFIRMED", "FALSE POSITIVE"]
+        labels = ["CANDIDATE", "CONFIRMED", "FALSE_POSITIVE"]
 
         print("\n=== Classification Report (HGB) ===")
         print(classification_report(self.y_test, self.y_pred, digits=3))

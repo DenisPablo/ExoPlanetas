@@ -59,7 +59,7 @@ paths:
                       classes:
                         type: array
                         items: { type: string }
-                        example: ["CANDIDATE", "CONFIRMED", "FALSE POSITIVE"]
+                        example: ["CANDIDATE", "CONFIRMED", "FALSE_POSITIVE"]
                   models_summary:
                     type: array
                     items:
@@ -157,7 +157,7 @@ paths:
                             CONFIRMED:
                               type: number
                               example: 0.0642
-                            FALSE POSITIVE:
+                            FALSE_POSITIVE:
                               type: number
                               example: 0.0114
                   model_info:
