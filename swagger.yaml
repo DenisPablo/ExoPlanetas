@@ -1,7 +1,7 @@
 openapi: 3.0.1
 info:
   title: Exoplanet Classifier API
-  description: API REST para clasificación automática de exoplanetas usando ML/AI.
+  description: API REST para clasificación automática de exoplanetas usando HistGradientBoostingClassifier.
   version: "1.0.0"
 
 servers:
@@ -11,8 +11,6 @@ servers:
     description: Servidor de producción
 
 tags:
-  - name: Auth
-    description: Manejo de autenticación
   - name: Model
     description: Información de modelo y versiones
   - name: Predict
@@ -23,35 +21,6 @@ tags:
     description: Métricas y estadísticas para la interfaz
 
 paths:
-  /auth/login:
-    post:
-      tags: [Auth]
-      summary: Autenticación de usuario
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                username:
-                  type: string
-                password:
-                  type: string
-              required: [username, password]
-      responses:
-        "200":
-          description: Token JWT válido
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                  expires_in:
-                    type: integer
-
   /model/info:
     get:
       tags: [Model]
@@ -66,21 +35,82 @@ paths:
                 properties:
                   name:
                     type: string
+                    example: "HGBExoplanetModel"
                   version:
                     type: string
+                    example: "1.0.0"
                   trained_on:
                     type: array
                     items: { type: string }
+                    example: ["datasets/kepler.csv"]
                   classes:
                     type: array
                     items: { type: string }
+                    example: ["CANDIDATE", "CONFIRMED", "FALSE POSITIVE"]
+                  accuracy:
+                    type: number
+                    format: float
+                    example: 0.85
+                  classification_report:
+                    type: object
+                    additionalProperties: true
+                    description: "Reporte completo de clasificación con métricas por clase"
+
+  /model-info/{model_name}:
+    get:
+      tags: [Model]
+      summary: Obtener información detallada de un modelo específico
+      parameters:
+        - in: path
+          name: model_name
+          required: true
+          schema: 
+            type: string
+          description: "Nombre del modelo a consultar"
+      responses:
+        "200":
+          description: Información detallada del modelo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model_name:
+                    type: string
+                    example: "hgb_exoplanet_model"
+                  model_path:
+                    type: string
+                    example: "models/hgb_exoplanet_model/hgb_exoplanet_model.pkl"
                   metrics:
                     type: object
+                    additionalProperties: true
+                    description: "Métricas de clasificación del modelo"
+                  confusion_matrix:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        type: integer
+                    description: "Matriz de confusión del modelo"
+                  files:
+                    type: object
                     properties:
-                      accuracy: { type: number, format: float }
-                      macro_f1: { type: number, format: float }
-                      recall_confirmed: { type: number, format: float }
-                      recall_fp: { type: number, format: float }
+                      metrics:
+                        type: string
+                        example: "models/hgb_exoplanet_model/metrics/classification_report.json"
+                      matrix:
+                        type: string
+                        example: "models/hgb_exoplanet_model/matrix/confusion_matrix.npy"
+        "404":
+          description: Modelo no encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Modelo 'modelo_inexistente' no encontrado"
 
   /predict:
     post:
@@ -97,14 +127,10 @@ paths:
                   type: array
                   items:
                     type: object
-                    properties:
-                      period: { type: number }
-                      duration: { type: number }
-                      depth: { type: number }
-                      planet_radius: { type: number }
-                      star_teff: { type: number }
-                      star_logg: { type: number }
-                      star_feh: { type: number }
+                    additionalProperties:
+                      type: number
+                    description: "Objeto con características numéricas del exoplaneta (koi_period, koi_duration, koi_depth, koi_prad, koi_steff, koi_slogg, etc.)"
+              required: [data]
       responses:
         "200":
           description: Resultado de predicción
@@ -118,18 +144,27 @@ paths:
                     items:
                       type: object
                       properties:
-                        class: { type: string }
+                        class: 
+                          type: string
+                          example: "CONFIRMED"
                         probabilities:
                           type: object
                           additionalProperties:
                             type: number
-                        explanations:
-                          type: object
-                          properties:
-                            top_features:
-                              type: object
-                              additionalProperties:
-                                type: number
+                          example:
+                            "CANDIDATE": 0.1
+                            "CONFIRMED": 0.8
+                            "FALSE POSITIVE": 0.1
+        "400":
+          description: Error en los datos enviados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "No se enviaron datos para predecir"
 
   /predict/upload:
     post:
@@ -145,62 +180,74 @@ paths:
                 file:
                   type: string
                   format: binary
+                  description: "Archivo CSV con datos de exoplanetas"
       responses:
         "200":
-          description: Estado de procesamiento
+          description: Resultado del procesamiento
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string }
-                  job_id: { type: string }
+                  total_planets:
+                    type: integer
+                    example: 100
+                  class_distribution:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                    example:
+                      "CONFIRMED": 60
+                      "CANDIDATE": 25
+                      "FALSE POSITIVE": 15
+                  download_url:
+                    type: string
+                    example: "/data/dataset_predictions.csv"
+        "400":
+          description: Error en el archivo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Archivo debe ser CSV"
 
-  /predict/status/{job_id}:
+  /download/{filename}:
     get:
       tags: [Predict]
-      summary: Consultar estado de un job batch
+      summary: Descargar archivo de predicciones
       parameters:
         - in: path
-          name: job_id
+          name: filename
           required: true
-          schema: { type: string }
+          schema: 
+            type: string
+          description: "Nombre del archivo a descargar"
       responses:
         "200":
-          description: Estado actual del job
+          description: Archivo CSV con predicciones
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Archivo no encontrado
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string }
-                  results_url: { type: string }
-
-  /predict/results/{job_id}:
-    get:
-      tags: [Predict]
-      summary: Obtener resultados de un job batch
-      parameters:
-        - in: path
-          name: job_id
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: JSON con predicciones o link a CSV
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  predictions:
-                    type: array
-                    items: { type: object }
+                  detail:
+                    type: string
+                    example: "Archivo no encontrado"
 
   /train:
     post:
       tags: [Train]
-      summary: Reentrenar modelo con nuevos datos
+      summary: Reentrenar modelo con nuevos hiperparámetros
       requestBody:
         required: true
         content:
@@ -208,20 +255,56 @@ paths:
             schema:
               type: object
               properties:
-                dataset_id: { type: string }
-                params:
-                  type: object
-                  additionalProperties: true
+                learning_rate:
+                  type: number
+                  format: float
+                  example: 0.05
+                  description: "Tasa de aprendizaje del modelo"
+                max_leaf_nodes:
+                  type: integer
+                  example: 31
+                  description: "Número máximo de nodos hoja"
+                min_samples_leaf:
+                  type: integer
+                  example: 20
+                  description: "Número mínimo de muestras por hoja"
+                early_stopping:
+                  type: boolean
+                  example: true
+                  description: "Habilitar parada temprana"
+              description: "Hiperparámetros opcionales para reentrenar el modelo"
       responses:
         "200":
-          description: Entrenamiento iniciado
+          description: Entrenamiento completado
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string }
-                  model_version: { type: string }
+                  status:
+                    type: string
+                    example: "completed"
+                  model_version:
+                    type: string
+                    example: "1.0.2"
+                  used_params:
+                    type: object
+                    additionalProperties: true
+                    example:
+                      learning_rate: 0.05
+                      max_leaf_nodes: 31
+                      min_samples_leaf: 20
+                      early_stopping: true
+        "400":
+          description: Error en los parámetros
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Debes enviar al menos un hiperparámetro para entrenar y sobrescribir el modelo."
 
   /dashboard/metrics:
     get:
@@ -239,7 +322,19 @@ paths:
                     type: object
                     additionalProperties:
                       type: object
-                      additionalProperties: { type: integer }
+                      additionalProperties: 
+                        type: integer
+                    example:
+                      confirmed:
+                        confirmed: 50
+                        false_positive: 5
+                      false_positive:
+                        confirmed: 3
+                        false_positive: 42
                   class_distribution:
                     type: object
-                    additionalProperties: { type: integer }
+                    additionalProperties: 
+                      type: integer
+                    example:
+                      confirmed: 53
+                      false_positive: 47
