@@ -2,13 +2,8 @@ services:
   - type: web
     name: exoplanetas-api
     env: python
-    buildCommand: |
-      python -m pip install --upgrade pip
-      python -m pip install --upgrade setuptools wheel
-      python -m pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: python run.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
-      - key: PORT
-        value: $PORT
