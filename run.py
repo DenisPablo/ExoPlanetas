@@ -14,4 +14,7 @@ if __name__ == "__main__":
     
     # Usar el puerto de Render o 8000 por defecto
     port = int(os.environ.get("PORT", 8000))
+    print(f"[INFO] Starting server on port {port}")
+    print(f"[INFO] Environment: {os.environ.get('RENDER', 'local')}")
+    
     uvicorn.run(app, host="0.0.0.0", port=port)
