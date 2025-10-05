@@ -86,7 +86,22 @@ paths:
     post:
       tags: [Predict]
       summary: Predicción individual de exoplanetas
-      description: Realiza predicciones individuales para uno o más exoplanetas.
+      description: Realiza predicciones individuales para uno o más exoplanetas usando una versión específica del modelo.
+      parameters:
+        - name: model_name
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "hgb_exoplanet_model"
+          description: Nombre del modelo a usar
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "latest"
+          description: Versión específica del modelo o 'latest'
       requestBody:
         required: true
         content:
@@ -145,12 +160,49 @@ paths:
                             FALSE POSITIVE:
                               type: number
                               example: 0.0114
+                  model_info:
+                    type: object
+                    properties:
+                      model_name:
+                        type: string
+                        example: "hgb_exoplanet_model"
+                      version:
+                        type: string
+                        example: "v1.0.0"
+                      used_model:
+                        type: string
+                        example: "hgb_exoplanet_model:v1.0.0"
+        "404":
+          description: Versión del modelo no encontrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Versión 'v999.0.0' no encontrada para el modelo 'hgb_exoplanet_model'. Versiones disponibles: ['v1.0.0', 'v1.0.1', 'v1.0.2']"
 
   /predict/upload:
     post:
       tags: [Predict]
       summary: Predicción batch via archivo CSV
-      description: Realiza predicciones batch subiendo un archivo CSV con datos de exoplanetas.
+      description: Realiza predicciones batch subiendo un archivo CSV con datos de exoplanetas usando una versión específica del modelo.
+      parameters:
+        - name: model_name
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "hgb_exoplanet_model"
+          description: Nombre del modelo a usar
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "latest"
+          description: Versión específica del modelo o 'latest'
       requestBody:
         required: true
         content:
@@ -181,7 +233,29 @@ paths:
                         example: 2
                   download_url:
                     type: string
-                    example: "/download/test_data_predictions.csv"
+                    example: "/download/test_data_predictions_v1.0.0.csv"
+                  model_info:
+                    type: object
+                    properties:
+                      model_name:
+                        type: string
+                        example: "hgb_exoplanet_model"
+                      version:
+                        type: string
+                        example: "v1.0.0"
+                      used_model:
+                        type: string
+                        example: "hgb_exoplanet_model:v1.0.0"
+        "404":
+          description: Versión del modelo no encontrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Versión 'v999.0.0' no encontrada para el modelo 'hgb_exoplanet_model'. Versiones disponibles: ['v1.0.0', 'v1.0.1', 'v1.0.2']"
 
   /download/{filename}:
     get:

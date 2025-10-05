@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 import pandas as pd
 import numpy as np
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from src.models.hgb_exoplanet import HGBExoplanetModel
@@ -52,6 +52,52 @@ try:
 except FileNotFoundError:
     print("[INFO] Modelo no encontrado, entrenando nuevo modelo...")
     model.run()
+
+
+def load_model_by_version(model_name: str = "hgb_exoplanet_model", version: str = "latest") -> HGBExoplanetModel:
+    """
+    Carga un modelo específico por versión.
+    
+    Args:
+        model_name: Nombre del modelo
+        version: Versión específica o 'latest'
+        
+    Returns:
+        HGBExoplanetModel cargado
+        
+    Raises:
+        HTTPException: Si la versión no existe
+    """
+    try:
+        # Verificar que la versión existe
+        if version != "latest" and not settings.version_exists(model_name, version):
+            available_versions = settings.get_all_versions(model_name)
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Versión '{version}' no encontrada para el modelo '{model_name}'. Versiones disponibles: {available_versions}"
+            )
+        
+        # Crear nueva instancia del modelo
+        model_instance = HGBExoplanetModel()
+        
+        # Cargar el modelo específico
+        model_instance.load_model(model_name, version)
+        
+        return model_instance
+        
+    except HTTPException:
+        # Re-lanzar HTTPException sin modificar
+        raise
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Modelo no encontrado: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error cargando modelo: {str(e)}"
+        )
 
 
 @app.get("/model/info", tags=["Model"], summary="Información de todos los modelos disponibles")
@@ -124,12 +170,18 @@ def model_info():
 
 
 @app.post("/predict", tags=["Predict"], summary="Predicción individual de exoplanetas")
-def predict(data: Dict[str, List[Dict[str, float]]]):
+def predict(
+    data: Dict[str, List[Dict[str, float]]],
+    model_name: str = Query("hgb_exoplanet_model", description="Nombre del modelo a usar"),
+    version: str = Query("latest", description="Versión específica del modelo o 'latest'")
+):
     """
-    Realiza predicciones individuales para uno o más exoplanetas.
+    Realiza predicciones individuales para uno o más exoplanetas usando una versión específica del modelo.
     
     Args:
         data: Diccionario con lista de objetos de exoplanetas, cada uno con características numéricas
+        model_name: Nombre del modelo a usar (default: hgb_exoplanet_model)
+        version: Versión específica del modelo o 'latest' (default: latest)
         
     Returns:
         Lista de predicciones con clase y probabilidades para cada exoplaneta
@@ -150,22 +202,22 @@ def predict(data: Dict[str, List[Dict[str, float]]]):
         }
         ```
     """
-    if model.pipe is None:
-        raise HTTPException(status_code=500, detail="Modelo no cargado")
-    
     user_data = data.get("data", [])
     if not user_data:
         raise HTTPException(status_code=400, detail="No se enviaron datos para predecir")
     
     try:
+        # Cargar modelo específico por versión
+        model_instance = load_model_by_version(model_name, version)
+        
         X_user = pd.DataFrame(user_data)
         # Asegurar que las columnas coincidan con el modelo
-        X_user = X_user.reindex(columns=model.X_num.columns, fill_value=0.0)
+        X_user = X_user.reindex(columns=model_instance.X_num.columns, fill_value=0.0)
         
         # Predicciones
-        y_pred = model.predict(X_user)
-        y_proba = model.predict_proba(X_user)
-        class_names = list(model.pipe.classes_)
+        y_pred = model_instance.predict(X_user)
+        y_proba = model_instance.predict_proba(X_user)
+        class_names = list(model_instance.pipe.classes_)
         
         predictions = []
         for i, pred in enumerate(y_pred):
@@ -175,36 +227,52 @@ def predict(data: Dict[str, List[Dict[str, float]]]):
                 "probabilities": probas
             })
         
-        return {"predictions": predictions}
+        return {
+            "predictions": predictions,
+            "model_info": {
+                "model_name": model_name,
+                "version": model_instance.version,
+                "used_model": f"{model_name}:{model_instance.version}"
+            }
+        }
     
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error en predicción: {str(e)}")
 
 
 @app.post("/predict/upload", tags=["Predict"], summary="Predicción batch via archivo CSV")
-async def predict_upload(file: UploadFile = File(...)):
+async def predict_upload(
+    file: UploadFile = File(...),
+    model_name: str = Query("hgb_exoplanet_model", description="Nombre del modelo a usar"),
+    version: str = Query("latest", description="Versión específica del modelo o 'latest'")
+):
     """
-    Realiza predicciones batch subiendo un archivo CSV con datos de exoplanetas.
+    Realiza predicciones batch subiendo un archivo CSV con datos de exoplanetas usando una versión específica del modelo.
     
     Args:
         file: Archivo CSV con columnas de características de exoplanetas
+        model_name: Nombre del modelo a usar (default: hgb_exoplanet_model)
+        version: Versión específica del modelo o 'latest' (default: latest)
         
     Returns:
         - total_planets: Número total de exoplanetas procesados
         - class_distribution: Distribución de clases predichas
         - download_url: URL para descargar el CSV con predicciones
+        - model_info: Información del modelo utilizado
         
     Note:
         El archivo CSV debe contener las columnas de características numéricas
         que el modelo espera (koi_period, koi_duration, koi_depth, etc.)
     """
-    if model.pipe is None:
-        raise HTTPException(status_code=500, detail="Modelo no cargado")
-    
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Archivo debe ser CSV")
 
     try:
+        # Cargar modelo específico por versión
+        model_instance = load_model_by_version(model_name, version)
+        
         # Leer archivo
         content = await file.read()
         import io
@@ -214,27 +282,34 @@ async def predict_upload(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="CSV vacío")
 
         # Preparar datos para predicción
-        X_user = df.reindex(columns=model.X_num.columns, fill_value=0.0)
+        X_user = df.reindex(columns=model_instance.X_num.columns, fill_value=0.0)
 
         # Predicciones
-        y_pred = model.predict(X_user)
+        y_pred = model_instance.predict(X_user)
         df["predicted_disposition"] = y_pred
 
         # Estadísticas
         stats = df["predicted_disposition"].value_counts().to_dict()
         total = len(df)
 
-        # Guardar CSV
-        output_filename = f"{os.path.splitext(file.filename)[0]}_predictions.csv"
+        # Guardar CSV con información de versión
+        output_filename = f"{os.path.splitext(file.filename)[0]}_predictions_{model_instance.version}.csv"
         output_path = settings.get_output_path(output_filename)
         df.to_csv(output_path, index=False)
 
         return {
             "total_planets": total,
             "class_distribution": stats,
-            "download_url": f"/download/{output_filename}"
+            "download_url": f"/download/{output_filename}",
+            "model_info": {
+                "model_name": model_name,
+                "version": model_instance.version,
+                "used_model": f"{model_name}:{model_instance.version}"
+            }
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error procesando archivo: {str(e)}")
 
