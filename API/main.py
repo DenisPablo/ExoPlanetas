@@ -10,6 +10,7 @@ import numpy as np
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.models.hgb_exoplanet import HGBExoplanetModel
 from src.utils.config import settings
@@ -42,6 +43,20 @@ app = FastAPI(
             "description": "Gestión de versiones de modelos",
         },
     ]
+)
+
+# Configurar CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://exoplanetas-intersoft.onrender.com",
+        "http://localhost:3000",  # Para desarrollo local
+        "http://localhost:3001",  # Puerto alternativo
+        "http://127.0.0.1:3000",  # Localhost alternativo
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 # Cargar modelo al iniciar
