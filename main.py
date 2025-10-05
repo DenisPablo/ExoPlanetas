@@ -10,6 +10,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from modelo import HGBExoplanetModel
 
+import joblib
+import json
 
 from fastapi import FastAPI, HTTPException
 from typing import Dict, Any
@@ -167,13 +169,49 @@ def train(data: Dict[str, Any]):
     }
 
 
+# Ruta relativa (carpeta "models" en el mismo nivel que este archivo)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_MODELS_DIR = os.path.join(BASE_DIR, "models")
 
-@app.get("/dashboard/metrics", tags=["Dashboard"])
-def dashboard_metrics():
-	return {
-		"confusion_matrix": {"confirmed": {"confirmed": 50, "false_positive": 5}, "false_positive": {"confirmed": 3, "false_positive": 42}},
-		"class_distribution": {"confirmed": 53, "false_positive": 47}
-	}
+@app.get("/model-info/{model_name}", tags=["Model Info"])
+def get_model_info(model_name: str):
+    """
+    Devuelve toda la información disponible del modelo:
+    - métricas de rendimiento
+    - matriz de confusión
+    - rutas de los archivos generados
+    """
+
+    base_dir = os.path.join(BASE_MODELS_DIR, model_name)
+    metrics_path = os.path.join(base_dir, "metrics", "classification_report.json")
+    matrix_path = os.path.join(base_dir, "matrix", "confusion_matrix.npy")
+    model_path = os.path.join(base_dir, f"{model_name}.pkl")
+
+    # --- Validaciones ---
+    if not os.path.exists(model_path):
+        raise HTTPException(status_code=404, detail=f"Modelo '{model_name}' no encontrado en {model_path}")
+    if not os.path.exists(metrics_path):
+        raise HTTPException(status_code=404, detail=f"Métricas no encontradas para '{model_name}'.")
+    if not os.path.exists(matrix_path):
+        raise HTTPException(status_code=404, detail=f"Matriz de confusión no encontrada para '{model_name}'.")
+
+    # --- Cargar métricas ---
+    with open(metrics_path, "r") as f:
+        metrics = json.load(f)
+
+    # --- Cargar matriz ---
+    confusion_matrix = np.load(matrix_path).tolist()
+
+    return {
+        "model_name": model_name,
+        "model_path": model_path,
+        "metrics": metrics,
+        "confusion_matrix": confusion_matrix,
+        "files": {
+            "metrics": metrics_path,
+            "matrix": matrix_path
+        }
+    }
 
 
 # Crear GET que consulte la carpeta una lista y devuelva URLs de descarga, Fecha.

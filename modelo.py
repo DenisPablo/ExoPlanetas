@@ -8,7 +8,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import classification_report, confusion_matrix
-
+import json
+import joblib
 
 class HGBExoplanetModel:
     """
@@ -166,19 +167,53 @@ class HGBExoplanetModel:
         self.save_comparison()
         self.error_summary()
 
-    # ------------------- 10) Guardar modelo como .pkl -------------------
-    def save_model(self, output_dir="models", filename="hgb_exoplanet_model.pkl"):
-        if self.pipe is None:
-            raise RuntimeError("El modelo aún no ha sido entrenado. Ejecuta train_model() o run() primero.")
-        
-        # Crear carpeta si no existe
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, filename)
+    # ------------------- 10) Guardar modelo, métricas y matriz -------------------
+    def save_model(self, model_name="hgb_exoplanet_model"):
+        """
+        Guarda el modelo entrenado, las métricas y la matriz de confusión en:
+        models/<model_name>/{model.pkl, metrics/..., matrix/...}
+        """
+        if self.pipe is None or self.y_test is None:
+            raise RuntimeError("El modelo aún no ha sido entrenado o evaluado. Ejecuta run() o evaluate() primero.")
 
-        # Guardar modelo
-        joblib.dump(self.pipe, output_path)
-        print(f"[INFO] Modelo guardado en: {output_path}")
-        return output_path
+        # --- Rutas base ---
+        base_dir = os.path.join("models", model_name)
+        metrics_dir = os.path.join(base_dir, "metrics")
+        matrix_dir = os.path.join(base_dir, "matrix")
+
+        # --- Crear carpetas ---
+        os.makedirs(metrics_dir, exist_ok=True)
+        os.makedirs(matrix_dir, exist_ok=True)
+
+        # --- Guardar modelo ---
+        model_path = os.path.join(base_dir, f"{model_name}.pkl")
+        joblib.dump(self.pipe, model_path)
+
+        # --- Guardar métricas ---
+        y_pred = getattr(self, "y_pred", None)
+        if y_pred is None:
+            y_pred = self.pipe.predict(self.X_test)
+            self.y_pred = y_pred
+
+        metrics = classification_report(self.y_test, y_pred, output_dict=True)
+        metrics_path = os.path.join(metrics_dir, "classification_report.json")
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=4)
+
+        # --- Guardar matriz de confusión ---
+        cm = confusion_matrix(self.y_test, y_pred)
+        matrix_path = os.path.join(matrix_dir, "confusion_matrix.npy")
+        np.save(matrix_path, cm)
+
+        print(f"[INFO] Modelo guardado en: {model_path}")
+        print(f"[INFO] Métricas guardadas en: {metrics_path}")
+        print(f"[INFO] Matriz de confusión guardada en: {matrix_path}")
+
+        return {
+            "model_path": model_path,
+            "metrics_path": metrics_path,
+            "matrix_path": matrix_path
+        }
 
 # ------------------- Uso -------------------
 if __name__ == "__main__":
@@ -187,5 +222,5 @@ if __name__ == "__main__":
     model.prepare_features()
     model.split_data()
     model.train_model()
-
+    model.evaluate()
     model.save_model()
