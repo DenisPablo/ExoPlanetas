@@ -54,6 +54,67 @@ except FileNotFoundError:
     model.run()
 
 
+def format_csv_output(df: pd.DataFrame, model_instance: HGBExoplanetModel) -> pd.DataFrame:
+    """
+    Formatea el DataFrame para generar un CSV legible y bien estructurado.
+    
+    Args:
+        df: DataFrame con datos originales y predicciones
+        model_instance: Instancia del modelo usado para las predicciones
+        
+    Returns:
+        DataFrame formateado con columnas ordenadas y valores redondeados
+    """
+    # Crear una copia para no modificar el original
+    formatted_df = df.copy()
+    
+    # Definir columnas de identificación (prioridad alta)
+    id_columns = ['kepid', 'kepoi_name', 'kepler_name', 'koi_disposition', 'koi_pdisposition', 'koi_score']
+    
+    # Definir columnas de predicción (nuevas)
+    prediction_columns = ['prediction_label', 'confidence']
+    
+    # Obtener columnas numéricas del modelo (excluyendo las de identificación y predicción)
+    model_columns = [col for col in model_instance.X_num.columns if col not in id_columns + prediction_columns]
+    
+    # Obtener otras columnas del dataset original
+    other_columns = [col for col in df.columns if col not in id_columns + model_columns + prediction_columns + ['predicted_disposition']]
+    
+    # Ordenar columnas: identificación, modelo, otras, predicción
+    ordered_columns = []
+    
+    # 1. Columnas de identificación (las que existen)
+    for col in id_columns:
+        if col in formatted_df.columns:
+            ordered_columns.append(col)
+    
+    # 2. Columnas del modelo
+    for col in model_columns:
+        if col in formatted_df.columns:
+            ordered_columns.append(col)
+    
+    # 3. Otras columnas del dataset
+    for col in other_columns:
+        if col not in ordered_columns:
+            ordered_columns.append(col)
+    
+    # 4. Columnas de predicción
+    for col in prediction_columns:
+        if col in formatted_df.columns:
+            ordered_columns.append(col)
+    
+    # Reordenar DataFrame
+    formatted_df = formatted_df[ordered_columns]
+    
+    # Redondear valores numéricos a 3 decimales
+    numeric_columns = formatted_df.select_dtypes(include=[np.number]).columns
+    for col in numeric_columns:
+        if col not in ['kepid', 'koi_score']:  # No redondear IDs y scores
+            formatted_df[col] = formatted_df[col].round(3)
+    
+    return formatted_df
+
+
 def load_model_by_version(model_name: str = "hgb_exoplanet_model", version: str = "latest") -> HGBExoplanetModel:
     """
     Carga un modelo específico por versión.
@@ -250,6 +311,7 @@ async def predict_upload(
 ):
     """
     Realiza predicciones batch subiendo un archivo CSV con datos de exoplanetas usando una versión específica del modelo.
+    Genera un CSV formateado y legible con predicciones enriquecidas.
     
     Args:
         file: Archivo CSV con columnas de características de exoplanetas
@@ -261,6 +323,16 @@ async def predict_upload(
         - class_distribution: Distribución de clases predichas
         - download_url: URL para descargar el CSV con predicciones
         - model_info: Información del modelo utilizado
+        - csv_info: Información sobre el formato del CSV generado
+        
+    CSV Output Features:
+        - Columnas ordenadas lógicamente: identificación, modelo, otras, predicción
+        - prediction_label: Clase predicha (CONFIRMED, CANDIDATE, FALSE POSITIVE)
+        - confidence: Porcentaje de confianza de la predicción
+        - generated_at: Marca de tiempo de generación
+        - Formato UTF-8 con separador de coma
+        - Valores numéricos redondeados a 3 decimales
+        - Compatible con Excel y Google Sheets
         
     Note:
         El archivo CSV debe contener las columnas de características numéricas
@@ -279,23 +351,53 @@ async def predict_upload(
         df = pd.read_csv(io.BytesIO(content), comment="#", quotechar='"', engine="python")
         
         if df.empty:
-            raise HTTPException(status_code=400, detail="CSV vacío")
+            raise HTTPException(status_code=400, detail="El archivo CSV está vacío. Por favor, verifique que el archivo contenga datos.")
+
+        # Verificar columnas necesarias para predicción
+        missing_columns = [col for col in model_instance.X_num.columns if col not in df.columns]
+        if missing_columns:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Faltan columnas necesarias para la predicción: {missing_columns[:5]}{'...' if len(missing_columns) > 5 else ''}. "
+                       f"El archivo debe contener al menos las columnas: {list(model_instance.X_num.columns[:10])}{'...' if len(model_instance.X_num.columns) > 10 else ''}"
+            )
 
         # Preparar datos para predicción
         X_user = df.reindex(columns=model_instance.X_num.columns, fill_value=0.0)
 
         # Predicciones
         y_pred = model_instance.predict(X_user)
-        df["predicted_disposition"] = y_pred
+        
+        # Obtener probabilidades si el modelo las soporta
+        try:
+            y_proba = model_instance.predict_proba(X_user)
+            # Obtener la probabilidad máxima (confianza)
+            confidence = np.max(y_proba, axis=1) * 100  # Convertir a porcentaje
+        except AttributeError:
+            # Si el modelo no soporta predict_proba
+            confidence = [np.nan] * len(y_pred)
+
+        # Agregar columnas de predicción
+        df["prediction_label"] = y_pred
+        df["confidence"] = confidence
+        
+        # Agregar marca de tiempo
+        from datetime import datetime
+        df["generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Formatear CSV para salida
+        formatted_df = format_csv_output(df, model_instance)
 
         # Estadísticas
-        stats = df["predicted_disposition"].value_counts().to_dict()
+        stats = df["prediction_label"].value_counts().to_dict()
         total = len(df)
 
-        # Guardar CSV con información de versión
+        # Guardar CSV formateado con información de versión
         output_filename = f"{os.path.splitext(file.filename)[0]}_predictions_{model_instance.version}.csv"
         output_path = settings.get_output_path(output_filename)
-        df.to_csv(output_path, index=False)
+        
+        # Guardar con formato UTF-8 y separador de coma
+        formatted_df.to_csv(output_path, index=False, encoding='utf-8', sep=',')
 
         return {
             "total_planets": total,
@@ -305,6 +407,13 @@ async def predict_upload(
                 "model_name": model_name,
                 "version": model_instance.version,
                 "used_model": f"{model_name}:{model_instance.version}"
+            },
+            "csv_info": {
+                "columns": len(formatted_df.columns),
+                "formatted": True,
+                "encoding": "UTF-8",
+                "separator": ",",
+                "decimal_places": 3
             }
         }
 
